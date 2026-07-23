@@ -98,6 +98,16 @@ When asked to improve "the AI," check which category applies — for integrated 
 
 There is (or should be) a labeled test set for measuring claim-verification and manipulation-detection accuracy — see `/scripts` for corpus/labeling scripts and `PROJECT_PLAN.md` §7. Any change to `fact_check.py` or `manipulation.py` should be checked against this test set before being considered done, not just smoke-tested on one example.
 
+## Working With the User
+
+The user is driving product/scope decisions but is **not an AI/backend expert** — they are learning as the project goes. Adjust collaboration accordingly:
+
+- **End-of-phase checkpoint (mandatory):** After finishing each build phase (see `PROJECT_PLAN.md` §6 for phase breakdown), stop and give the user a concrete, non-technical checklist of what to manually check to confirm that phase actually works — before moving on to the next phase. Don't just say "tests pass, done."
+  - Checklist should be things the user can literally do: run a specific command, open a URL in a browser, paste a specific reel link, look at a specific field in a response or UI, etc.
+  - Explain what a correct result looks like and what a broken result would look like, in plain language — not "check the response schema," but "you should see a score between 0 and 100 and at least one bullet point explaining why."
+  - Call out anything that needs the user's own action first (API keys, Atlas connection string, installing a tool) as a blocking step, not an aside.
+- Prefer plain-language explanations of AI concepts (RAG, embeddings, fusion scoring, etc.) over jargon when narrating what was built — assume the user wants to understand what's happening, not just that it happened.
+
 ## What NOT to do
 
 - Don't add deepfake/authenticity detection logic beyond a thin wrapper around an existing model — this is intentionally a minor signal, not the focus.
