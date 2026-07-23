@@ -5,8 +5,10 @@ from bson.errors import InvalidId
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from app.db.mongo import get_db
+from app.models.claim import VerifiedClaim
 from app.models.reel import PipelineStatus, ReelCreateRequest, ReelResponse
 from app.services.claim_extraction import extract_claims
+from app.services.fact_check import verify_claims
 from app.services.ingestion import detect_platform, ingest_reel
 from app.services.transcription import transcribe_audio
 
@@ -47,8 +49,18 @@ async def _run_pipeline(reel_id: str, url: str) -> None:
 
         claims = await extract_claims(transcript)
         await set_status(
-            PipelineStatus.ready,
+            PipelineStatus.verifying_claims,
             claims=[claim.model_dump() for claim in claims],
+        )
+
+        verifications = await verify_claims(claims)
+        verified_claims = [
+            VerifiedClaim(text=c.text, category=c.category, verification=v)
+            for c, v in zip(claims, verifications)
+        ]
+        await set_status(
+            PipelineStatus.ready,
+            claims=[claim.model_dump() for claim in verified_claims],
         )
     except Exception as exc:  # noqa: BLE001 — surfaced to the user via the status field
         await set_status(PipelineStatus.failed, error=str(exc))

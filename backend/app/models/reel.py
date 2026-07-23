@@ -3,7 +3,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field, HttpUrl
 
-from app.models.claim import ExtractedClaim
+from app.models.claim import VerifiedClaim
 
 
 class PipelineStatus(str, Enum):
@@ -12,6 +12,7 @@ class PipelineStatus(str, Enum):
     extracting = "extracting"
     transcribing = "transcribing"
     extracting_claims = "extracting_claims"
+    verifying_claims = "verifying_claims"
     ready = "ready"
     failed = "failed"
 
@@ -29,7 +30,7 @@ class ReelDocument(BaseModel):
     audio_path: str | None = None
     frame_paths: list[str] = Field(default_factory=list)
     transcript: str | None = None
-    claims: list[ExtractedClaim] = Field(default_factory=list)
+    claims: list[VerifiedClaim] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -43,5 +44,5 @@ class ReelResponse(BaseModel):
     audio_path: str | None
     frame_paths: list[str]
     transcript: str | None
-    claims: list[ExtractedClaim]
+    claims: list[VerifiedClaim]
     created_at: datetime

@@ -7,6 +7,7 @@ const STATUS_LABELS = {
   extracting: 'Extracting audio & frames…',
   transcribing: 'Transcribing audio…',
   extracting_claims: 'Extracting claims…',
+  verifying_claims: 'Fact-checking claims…',
   ready: 'Done',
   failed: 'Failed',
 };
@@ -17,6 +18,15 @@ const CATEGORY_LABELS = {
   finance: 'Finance',
   statistic: 'Statistic',
   other: 'Other',
+};
+
+const VERDICT_STYLES = {
+  supported: { label: 'Supported', className: 'bg-green-50 text-green-700' },
+  contradicted: { label: 'Contradicted', className: 'bg-red-50 text-red-700' },
+  insufficient_evidence: {
+    label: 'Insufficient evidence',
+    className: 'bg-slate-100 text-slate-600',
+  },
 };
 
 export default function Home() {
@@ -61,8 +71,8 @@ export default function Home() {
       <div className="w-full max-w-xl">
         <h1 className="text-3xl font-semibold mb-1">Reel Reality Check</h1>
         <p className="text-slate-500 mb-8">
-          Phase 2: transcript + extracted claims. No fact-checking or credibility
-          score yet — that's Phase 3.
+          Phase 3: claims are now fact-checked against a curated source corpus.
+          No overall credibility score yet — that's the fusion layer, coming later.
         </p>
 
         <form onSubmit={handleSubmit} className="flex gap-2">
@@ -114,17 +124,52 @@ export default function Home() {
                   Extracted claims {reel.claims.length === 0 && '(none found)'}
                 </h2>
                 <ul className="space-y-2">
-                  {reel.claims.map((claim, i) => (
-                    <li
-                      key={i}
-                      className="text-sm rounded-md border border-slate-200 p-2 flex justify-between gap-3"
-                    >
-                      <span>{claim.text}</span>
-                      <span className="shrink-0 text-xs rounded-full bg-indigo-50 text-indigo-700 px-2 py-0.5 h-fit">
-                        {CATEGORY_LABELS[claim.category] ?? claim.category}
-                      </span>
-                    </li>
-                  ))}
+                  {reel.claims.map((claim, i) => {
+                    const verdict = VERDICT_STYLES[claim.verification?.verdict] ?? null;
+                    return (
+                      <li
+                        key={i}
+                        className="text-sm rounded-md border border-slate-200 p-3 space-y-2"
+                      >
+                        <div className="flex justify-between gap-3">
+                          <span>{claim.text}</span>
+                          <span className="shrink-0 text-xs rounded-full bg-indigo-50 text-indigo-700 px-2 py-0.5 h-fit">
+                            {CATEGORY_LABELS[claim.category] ?? claim.category}
+                          </span>
+                        </div>
+                        {claim.verification && (
+                          <div className="space-y-1">
+                            {verdict && (
+                              <span
+                                className={`inline-block text-xs rounded-full px-2 py-0.5 font-medium ${verdict.className}`}
+                              >
+                                {verdict.label}
+                              </span>
+                            )}
+                            <p className="text-xs text-slate-500">
+                              {claim.verification.explanation}
+                            </p>
+                            {claim.verification.sources.length > 0 && (
+                              <ul className="text-xs text-slate-400 list-disc list-inside">
+                                {claim.verification.sources.map((src) => (
+                                  <li key={src}>
+                                    <a
+                                      href={src}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="underline hover:text-slate-600"
+                                    >
+                                      {src}
+                                    </a>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             )}
