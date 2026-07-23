@@ -14,9 +14,14 @@ Full plan and rationale: see `PROJECT_PLAN.md` in the repo root.
 
 - **Frontend:** React (Vite) + Tailwind CSS
 - **Backend:** Python 3.11+, FastAPI
-- **Database:** MongoDB (Atlas or local), optionally with Atlas Vector Search for embeddings — no separate vector DB unless MongoDB's vector search proves insufficient
-- **AI/ML:** Whisper (STT), sentence-transformers or API-based embeddings, Claude/GPT API for claim extraction + verification reasoning, a small open-source authenticity/deepfake classifier
-- **Media processing:** yt-dlp, ffmpeg
+- **Database:** MongoDB Atlas (free M0 tier). RAG retrieval currently does brute-force cosine similarity in Python over the (small, curated) `sources` collection rather than an Atlas Vector Search index — simpler, no index setup required, fine at this corpus size. Revisit if the corpus grows large enough for that to become a bottleneck.
+- **AI/ML (actual, as of Phase 4):**
+  - Speech-to-text: **faster-whisper** (local, CPU, ONNX/ctranslate2-based, free, no API key) — chosen over API-based Whisper specifically to avoid per-request cost.
+  - Embeddings: **fastembed** (local, ONNX-based, free, no API key, `BAAI/bge-small-en-v1.5`) — chosen over torch-based sentence-transformers to avoid a heavy/fragile torch install.
+  - Claim extraction + fact-check reasoning: **Google Gemini API, free tier** (`gemini-flash-latest` — not `gemini-2.0-flash`, which returns 0 free-tier quota on this project's key). Calls wrapped with retry-on-503/429 (`app/services/llm_utils.py`) since the free tier occasionally returns transient "high demand" errors.
+    - **Known constraint:** the free tier caps `gemini-flash-latest` at ~20 requests/day per project (`RequestsPerDayPerProjectPerModel-FreeTier`). Each reel analysis uses 2 calls (claim extraction + fact-check verification), so this is roughly **10 full analyses/day** before hitting a 429 that retries can't fix (it's a daily cap, not a transient spike). If a reel gets stuck mid-pipeline with no error, check for this before assuming a bug — `GET /reels/{id}` will show `status: "failed"` with a `RESOURCE_EXHAUSTED` / `quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier` error once it actually fails.
+  - Manipulation detection (pacing/tone/clickbait): rule-based, not ML — see `app/services/manipulation.py`.
+- **Media processing:** yt-dlp (invoked via `python -m yt_dlp`, not the console script, for reliability), ffmpeg (resolved via `app/services/media_utils.py`, which falls back to the `imageio-ffmpeg` bundled binary if ffmpeg isn't on PATH — avoids a common "works after reboot only" gotcha on Windows).
 - **Background jobs:** FastAPI `BackgroundTasks` for MVP; document if migrating to Celery+Redis later
 
 ## Repository Structure (target)
@@ -51,26 +56,26 @@ Keep the pipeline steps in `/services` as small, independently testable function
 
 ## Development Commands
 
-Once scaffolded, expect commands like:
-
 ```bash
-# Backend
+# Backend (Windows)
 cd backend
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+python -m venv venv
+./venv/Scripts/python.exe -m pip install -r requirements.txt
+./venv/Scripts/python.exe -m uvicorn app.main:app --reload --port 8000
 
 # Frontend
 cd frontend
 npm install
-npm run dev
+npm run dev            # http://localhost:5173
 
-# Tests
-cd backend && pytest
-cd frontend && npm test
+# Seed the RAG source corpus (required before fact-check will return anything but
+# "insufficient evidence" — run once, and again any time WIKIPEDIA_TITLES changes)
+./backend/venv/Scripts/python.exe scripts/seed_sources.py
 ```
 
-Update this section with actual commands once `requirements.txt` / `package.json` exist — don't leave it stale.
+Required in `backend/.env` (copy from `.env.example`): `MONGO_URI` (Atlas connection string), `GEMINI_API_KEY` (free, from https://aistudio.google.com/apikey). `WHISPER_MODEL_SIZE` and `STORAGE_DIR` have working defaults.
+
+No automated test suite yet (`/backend/tests` is scaffolded but empty) — verification so far has been direct smoke tests of each service plus live end-to-end runs through the real API. Add pytest coverage before Phase 7 evaluation.
 
 ## Coding Conventions
 
@@ -83,8 +88,8 @@ Update this section with actual commands once `requirements.txt` / `package.json
 ## Database Notes
 
 - Collections: `reels`, `sources`, `users` (optional). Full field-level schema is in `PROJECT_PLAN.md` §5 — keep that doc in sync if the schema changes.
-- `sources` collection is the curated fact-check corpus used for RAG retrieval. It needs to be seeded via a script in `/scripts` before fact-checking will work — don't assume it's populated in dev/test environments.
-- If using MongoDB Atlas Vector Search, document the index configuration in `/backend/app/db/README.md` (create this file when the index is set up).
+- `sources` collection is the curated fact-check corpus used for RAG retrieval, seeded via `scripts/seed_sources.py` (currently ~15 real Wikipedia articles on health/finance/career misinformation topics — small on purpose, expand before Phase 7 evaluation). Don't assume it's populated in a fresh dev/test environment.
+- Not using Atlas Vector Search (see Tech Stack) — no index to configure. `app/db/README.md` doesn't exist and isn't needed unless that decision changes.
 
 ## AI Component Boundaries (important for scoping)
 

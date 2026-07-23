@@ -7,7 +7,9 @@ app = FastAPI(title="Reel Reality Check API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    # Vite auto-increments the port (5174, 5175, ...) if 5173 isn't free yet on
+    # restart, which would otherwise intermittently break CORS in local dev.
+    allow_origin_regex=r"http://localhost:\d+",
     allow_methods=["*"],
     allow_headers=["*"],
 )

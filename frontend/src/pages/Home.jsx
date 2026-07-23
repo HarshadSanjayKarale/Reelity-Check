@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { createReel, getReel } from '../api/reels';
+import Navbar from '../components/Navbar';
+import Hero from '../components/Hero';
+import HowItWorks from '../components/HowItWorks';
+import PipelineLoader from '../components/PipelineLoader';
+import CredibilityCard from '../components/CredibilityCard';
+import TranscriptPanel from '../components/TranscriptPanel';
+import ClaimsPanel from '../components/ClaimsPanel';
+import ManipulationPanel from '../components/ManipulationPanel';
+import AuthenticityPanel from '../components/AuthenticityPanel';
 
 const STATUS_LABELS = {
   pending: 'Queued…',
@@ -8,42 +17,38 @@ const STATUS_LABELS = {
   transcribing: 'Transcribing audio…',
   extracting_claims: 'Extracting claims…',
   verifying_claims: 'Fact-checking claims…',
+  detecting_manipulation: 'Analyzing pacing & tone…',
+  checking_authenticity: 'Checking authenticity…',
   ready: 'Done',
   failed: 'Failed',
-};
-
-const CATEGORY_LABELS = {
-  salary_career: 'Salary / Career',
-  health: 'Health',
-  finance: 'Finance',
-  statistic: 'Statistic',
-  other: 'Other',
-};
-
-const VERDICT_STYLES = {
-  supported: { label: 'Supported', className: 'bg-green-50 text-green-700' },
-  contradicted: { label: 'Contradicted', className: 'bg-red-50 text-red-700' },
-  insufficient_evidence: {
-    label: 'Insufficient evidence',
-    className: 'bg-slate-100 text-slate-600',
-  },
 };
 
 export default function Home() {
   const [url, setUrl] = useState('');
   const [reel, setReel] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const pollRef = useRef(null);
+  const resultsRef = useRef(null);
 
   useEffect(() => {
     return () => clearInterval(pollRef.current);
   }, []);
+
+  // Scroll into view once when a new analysis starts (reel flips null -> truthy),
+  // not on every polling update — hence depending on the boolean, not reel itself.
+  useEffect(() => {
+    if (reel) {
+      resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [reel === null]);
 
   async function handleSubmit(e) {
     e.preventDefault();
     setSubmitError(null);
     setReel(null);
     clearInterval(pollRef.current);
+    setSubmitting(true);
 
     try {
       const created = await createReel(url);
@@ -63,115 +68,57 @@ export default function Home() {
       }, 2000);
     } catch (err) {
       setSubmitError(err.message);
+    } finally {
+      setSubmitting(false);
     }
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col items-center px-4 py-16">
-      <div className="w-full max-w-xl">
-        <h1 className="text-3xl font-semibold mb-1">Reel Reality Check</h1>
-        <p className="text-slate-500 mb-8">
-          Phase 3: claims are now fact-checked against a curated source corpus.
-          No overall credibility score yet — that's the fusion layer, coming later.
-        </p>
+    <div id="top" className="min-h-screen bg-slate-50">
+      <Navbar />
+      <Hero url={url} setUrl={setUrl} onSubmit={handleSubmit} submitting={submitting} />
+      <HowItWorks />
 
-        <form onSubmit={handleSubmit} className="flex gap-2">
-          <input
-            type="url"
-            required
-            placeholder="https://www.instagram.com/reel/..."
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            className="flex-1 rounded-lg border border-slate-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          />
-          <button
-            type="submit"
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-white font-medium hover:bg-indigo-700"
-          >
-            Analyze
-          </button>
-        </form>
-
+      <div ref={resultsRef} className="mx-auto max-w-3xl scroll-mt-20 px-4 pb-24 sm:px-6">
         {submitError && (
-          <p className="mt-4 text-red-600 text-sm">{submitError}</p>
+          <p className="animate-fade-in rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600 ring-1 ring-red-600/10">
+            {submitError}
+          </p>
         )}
 
         {reel && (
-          <div className="mt-8 rounded-lg border border-slate-200 bg-white p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="font-medium">{STATUS_LABELS[reel.status] ?? reel.status}</span>
-              <span className="text-xs uppercase tracking-wide text-slate-400">
-                {reel.platform}
-              </span>
+          <div className="space-y-5">
+            <div className="animate-fade-in rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <span className="text-sm font-medium text-slate-700">
+                  {STATUS_LABELS[reel.status] ?? reel.status}
+                </span>
+                <span className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  {reel.platform}
+                </span>
+              </div>
+
+              {reel.status !== 'failed' && <PipelineLoader status={reel.status} />}
+
+              {reel.status === 'failed' && (
+                <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{reel.error}</p>
+              )}
             </div>
 
-            {reel.status === 'failed' && (
-              <p className="text-red-600 text-sm">{reel.error}</p>
+            {reel.status === 'ready' && reel.credibility && (
+              <CredibilityCard credibility={reel.credibility} />
             )}
 
-            {reel.transcript && (
-              <div>
-                <h2 className="text-sm font-semibold text-slate-700 mb-1">Transcript</h2>
-                <p className="text-sm text-slate-600 max-h-40 overflow-y-auto whitespace-pre-wrap">
-                  {reel.transcript || '(no speech detected)'}
-                </p>
-              </div>
+            {reel.transcript && <TranscriptPanel transcript={reel.transcript} />}
+
+            {reel.status === 'ready' && <ClaimsPanel claims={reel.claims} />}
+
+            {reel.status === 'ready' && reel.manipulation_signals && (
+              <ManipulationPanel signals={reel.manipulation_signals} />
             )}
 
-            {reel.status === 'ready' && (
-              <div>
-                <h2 className="text-sm font-semibold text-slate-700 mb-2">
-                  Extracted claims {reel.claims.length === 0 && '(none found)'}
-                </h2>
-                <ul className="space-y-2">
-                  {reel.claims.map((claim, i) => {
-                    const verdict = VERDICT_STYLES[claim.verification?.verdict] ?? null;
-                    return (
-                      <li
-                        key={i}
-                        className="text-sm rounded-md border border-slate-200 p-3 space-y-2"
-                      >
-                        <div className="flex justify-between gap-3">
-                          <span>{claim.text}</span>
-                          <span className="shrink-0 text-xs rounded-full bg-indigo-50 text-indigo-700 px-2 py-0.5 h-fit">
-                            {CATEGORY_LABELS[claim.category] ?? claim.category}
-                          </span>
-                        </div>
-                        {claim.verification && (
-                          <div className="space-y-1">
-                            {verdict && (
-                              <span
-                                className={`inline-block text-xs rounded-full px-2 py-0.5 font-medium ${verdict.className}`}
-                              >
-                                {verdict.label}
-                              </span>
-                            )}
-                            <p className="text-xs text-slate-500">
-                              {claim.verification.explanation}
-                            </p>
-                            {claim.verification.sources.length > 0 && (
-                              <ul className="text-xs text-slate-400 list-disc list-inside">
-                                {claim.verification.sources.map((src) => (
-                                  <li key={src}>
-                                    <a
-                                      href={src}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="underline hover:text-slate-600"
-                                    >
-                                      {src}
-                                    </a>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
+            {reel.status === 'ready' && reel.authenticity_signal && (
+              <AuthenticityPanel signal={reel.authenticity_signal} />
             )}
           </div>
         )}
