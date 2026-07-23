@@ -30,6 +30,7 @@ from app.models.verification import (
     VerificationVerdict,
 )
 from app.services.embeddings import embed_text
+from app.services.llm_utils import llm_retry
 
 MODEL_NAME = "gemini-flash-latest"
 TOP_K = 3
@@ -92,6 +93,7 @@ def _build_prompt(items: list[tuple[ExtractedClaim, list[dict]]]) -> str:
     return PROMPT_TEMPLATE.format(claim_blocks="\n\n".join(blocks))
 
 
+@llm_retry
 def _verify_batch_sync(items: list[tuple[ExtractedClaim, list[dict]]]) -> ClaimVerificationResult:
     response = _client().models.generate_content(
         model=MODEL_NAME,

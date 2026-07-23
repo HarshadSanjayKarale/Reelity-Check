@@ -7,9 +7,12 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from app.db.mongo import get_db
 from app.models.claim import VerifiedClaim
 from app.models.reel import PipelineStatus, ReelCreateRequest, ReelResponse
+from app.services.authenticity import check_authenticity
 from app.services.claim_extraction import extract_claims
 from app.services.fact_check import verify_claims
+from app.services.fusion import fuse_signals
 from app.services.ingestion import detect_platform, ingest_reel
+from app.services.manipulation import detect_manipulation
 from app.services.transcription import transcribe_audio
 
 router = APIRouter(prefix="/reels", tags=["reels"])
@@ -27,6 +30,9 @@ def _to_response(doc: dict) -> ReelResponse:
         frame_paths=doc.get("frame_paths", []),
         transcript=doc.get("transcript"),
         claims=doc.get("claims", []),
+        manipulation_signals=doc.get("manipulation_signals"),
+        authenticity_signal=doc.get("authenticity_signal"),
+        credibility=doc.get("credibility"),
         created_at=doc["created_at"],
     )
 
@@ -44,10 +50,10 @@ async def _run_pipeline(reel_id: str, url: str) -> None:
         await set_status(PipelineStatus.extracting, **ingest_result)
 
         await set_status(PipelineStatus.transcribing)
-        transcript = await transcribe_audio(ingest_result["audio_path"])
-        await set_status(PipelineStatus.extracting_claims, transcript=transcript)
+        transcription = await transcribe_audio(ingest_result["audio_path"])
+        await set_status(PipelineStatus.extracting_claims, transcript=transcription.text)
 
-        claims = await extract_claims(transcript)
+        claims = await extract_claims(transcription.text)
         await set_status(
             PipelineStatus.verifying_claims,
             claims=[claim.model_dump() for claim in claims],
@@ -59,8 +65,28 @@ async def _run_pipeline(reel_id: str, url: str) -> None:
             for c, v in zip(claims, verifications)
         ]
         await set_status(
-            PipelineStatus.ready,
+            PipelineStatus.detecting_manipulation,
             claims=[claim.model_dump() for claim in verified_claims],
+        )
+
+        manipulation_signals = await detect_manipulation(
+            ingest_result["video_path"],
+            ingest_result["audio_path"],
+            transcription.text,
+            transcription.speaking_rate_wps,
+        )
+        await set_status(
+            PipelineStatus.checking_authenticity,
+            manipulation_signals=manipulation_signals.model_dump(),
+        )
+
+        authenticity_signal = await check_authenticity(ingest_result["frame_paths"])
+        credibility = fuse_signals(verified_claims, manipulation_signals, authenticity_signal)
+
+        await set_status(
+            PipelineStatus.ready,
+            authenticity_signal=authenticity_signal.model_dump(),
+            credibility=credibility.model_dump(),
         )
     except Exception as exc:  # noqa: BLE001 — surfaced to the user via the status field
         await set_status(PipelineStatus.failed, error=str(exc))
@@ -80,6 +106,9 @@ async def create_reel(payload: ReelCreateRequest, background_tasks: BackgroundTa
         "frame_paths": [],
         "transcript": None,
         "claims": [],
+        "manipulation_signals": None,
+        "authenticity_signal": None,
+        "credibility": None,
         "created_at": datetime.now(timezone.utc),
     }
     result = await db.reels.insert_one(doc)

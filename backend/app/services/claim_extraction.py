@@ -12,6 +12,7 @@ from google.genai import types
 
 from app.config import settings
 from app.models.claim import ClaimExtractionResult, ExtractedClaim
+from app.services.llm_utils import llm_retry
 
 MODEL_NAME = "gemini-flash-latest"
 
@@ -40,6 +41,7 @@ def _client() -> genai.Client:
     return genai.Client(api_key=settings.gemini_api_key)
 
 
+@llm_retry
 def _extract_claims_sync(transcript: str) -> list[ExtractedClaim]:
     response = _client().models.generate_content(
         model=MODEL_NAME,

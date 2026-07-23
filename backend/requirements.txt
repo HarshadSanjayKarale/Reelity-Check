@@ -9,3 +9,9 @@ imageio-ffmpeg>=0.6
 faster-whisper>=1.0
 google-genai>=1.0
 fastembed>=0.4
+numpy>=2.0
+tenacity>=8.2
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.9
+transformers>=4.45
+pillow>=12.0

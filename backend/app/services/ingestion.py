@@ -4,31 +4,15 @@ manipulation detection) will consume.
 """
 
 import asyncio
-import shutil
 import subprocess
 import sys
-from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlparse
 
 from app.config import settings
+from app.services.media_utils import ffmpeg_exe
 
 FRAME_INTERVAL_SECONDS = 1  # one keyframe per second, good enough for Phase 4 pacing analysis later
-
-
-@lru_cache(maxsize=1)
-def _ffmpeg_exe() -> str:
-    """Resolve an ffmpeg binary without depending on the shell's PATH being
-    fresh — a system ffmpeg install (e.g. via winget) only reaches PATH in
-    terminals opened after the install, which trips up new dev machines.
-    Falls back to the portable binary bundled by imageio-ffmpeg.
-    """
-    on_path = shutil.which("ffmpeg")
-    if on_path:
-        return on_path
-    import imageio_ffmpeg
-
-    return imageio_ffmpeg.get_ffmpeg_exe()
 
 
 def detect_platform(url: str) -> str:
@@ -70,7 +54,7 @@ def _extract_audio_sync(video_path: str, reel_id: str) -> str:
     out_dir = _reel_dir(reel_id)
     audio_path = out_dir / "audio.wav"
     cmd = [
-        _ffmpeg_exe(), "-y",
+        ffmpeg_exe(), "-y",
         "-i", video_path,
         "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
         str(audio_path),
@@ -86,7 +70,7 @@ def _extract_frames_sync(video_path: str, reel_id: str) -> list[str]:
     out_dir.mkdir(parents=True, exist_ok=True)
     pattern = out_dir / "frame_%03d.jpg"
     cmd = [
-        _ffmpeg_exe(), "-y",
+        ffmpeg_exe(), "-y",
         "-i", video_path,
         "-vf", f"fps=1/{FRAME_INTERVAL_SECONDS}",
         str(pattern),
